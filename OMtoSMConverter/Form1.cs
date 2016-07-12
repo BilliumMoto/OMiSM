@@ -306,7 +306,7 @@ namespace OMtoSMConverter
             HeaderData.Add(smSetting.GENRE, beatmap.oMetadata["Tags"]);
 
             HeaderData.Add(smSetting.CREDIT, beatmap.oMetadata["Creator"]);
-            HeaderData.Add(smSetting.BANNER, ""); //FIX THIS SOON? Graphics manipulation maybe? How does graphics even work?
+            HeaderData.Add(smSetting.BANNER, ""); //FIX THIS SOON? Graphics manipulation maybe? How does graphics even work? No clue.
 
             //FIX THIS IN A BIT, this is not proper at all as it is... I mean, it works?
             string BG;
