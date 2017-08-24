@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -24,6 +25,7 @@ using System.Windows.Forms;
  * Proper notification of inability to copy files
  * Copy mp3s asynchronously (createSingleSMFile())
  * Figure out what's causing the lag
+ * Completely fails when there are more than five diffs of the same keycount in the same file
  * 
  * 
  * DONE
@@ -39,8 +41,10 @@ namespace OMtoSMConverter
         //Initializations
         public Form1()
         {
+            Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
             InitializeComponent();
             beginInstructions();
+
         }
 
         //Stuff that happens
@@ -180,10 +184,15 @@ namespace OMtoSMConverter
         private void WinKeyPress(object sender, KeyPressEventArgs e)
         {
             if (e.KeyChar == 'e') boxClear();
+            if (e.KeyChar == 'h')
+            {
+                hsCopier();
+            }
+                
         }
 
         //GUI I/O
-        public void boxInform(string progress)
+        public void boxInform(string progress, bool verbose=false)
         {
             outBox.Items.Add(progress);
             int visibleItems = outBox.ClientSize.Height / outBox.ItemHeight;
@@ -200,12 +209,20 @@ namespace OMtoSMConverter
         public void beginInstructions()
         {
             boxInform("Drag and drop a bunch of osu files and folders here!",
-            "Press 'e' to clear this status box.");
+            "Press 'e' to clear this status box.",
+            "Press 'h' to copy hitsounds");
         }
         private void boxClear()
         {
             outBox.Items.Clear();
             beginInstructions();
+        }
+        public void hsCopier()
+        {
+            Form2 hitsoundCopier = new Form2();
+            hitsoundCopier.Show();
+            hitsoundCopier.parent = this;
+            this.Hide();
         }
 
         //File Handling
@@ -306,13 +323,13 @@ namespace OMtoSMConverter
             HeaderData.Add(smSetting.GENRE, beatmap.oMetadata["Tags"]);
 
             HeaderData.Add(smSetting.CREDIT, beatmap.oMetadata["Creator"]);
-            HeaderData.Add(smSetting.BANNER, ""); //FIX THIS SOON? Graphics manipulation maybe? How does graphics even work? No clue.
+            HeaderData.Add(smSetting.BANNER, ""); //FIX THIS SOON? Graphics manipulation maybe? How does graphics even work?
 
             //FIX THIS IN A BIT, this is not proper at all as it is... I mean, it works?
             string BG;
             try
             {
-                BG = beatmap.oEvents[1].eventSplit[2];
+                BG = beatmap.oEvents[1].parameters[2];
             }
             catch
             {
@@ -578,6 +595,7 @@ namespace OMtoSMConverter
             while ((line = osuFile.ReadLine()) != null)
             {
                 //First get the raw line
+                line.Trim();
                 placeHold.osuRaw.Add(line);
                 //Console.WriteLine(line);
 
@@ -587,6 +605,7 @@ namespace OMtoSMConverter
                 {
                     osuField = line;
                 }
+                else if (line == "") continue;
                 else
                 {
                     switch (osuField)
@@ -608,7 +627,7 @@ namespace OMtoSMConverter
                             break;
                         case "[TimingPoints]":
                             osuTimingPoint TP = osuTimingPoint.Parse(line);
-                            if (TP !=  null)
+                            if (TP != null)
                                 placeHold.oTimingPoints.Add(TP);
                             break;
                         case "[HitObjects]":
@@ -638,7 +657,6 @@ namespace OMtoSMConverter
                 while (realStartMS <= placeHold.oHitObjects.First().Time)
                 {
                     realStartMS += placeHold.BeatsPerMeasure * placeHold.oTimingPoints.First().MSPerBeat;
-
                 }
                 while (realStartMS >= placeHold.oHitObjects.First().Time)
                 {
@@ -741,14 +759,14 @@ namespace OMtoSMConverter
                 }
 
                 //We have HO list now and full queue of LNEnds. We get all LNEnds that end before measure end.
-                foreach (Tuple<int,int> LNEnd in LNEnds)
+                foreach (Tuple<int, int> LNEnd in LNEnds)
                 {
                     if (LNEnd.Item2 < currFudgeMeasureEnd) currMeasureLNEnds.Add(LNEnd);
                 }
                 //Remove all LNEnds that we took from the list
                 foreach (Tuple<int, int> LNEnd in currMeasureLNEnds)
                 {
-                    LNEnds.Remove(LNEnd);                    
+                    LNEnds.Remove(LNEnd);
                 }
 
                 //We now have everything we need to make a measure.
@@ -760,6 +778,126 @@ namespace OMtoSMConverter
                 ToBeAdded.MeasureNum = currMeasureNum;
                 ToBeAdded.fillMeasurefromOsu(currMeasureHO, currMeasureLNEnds);
                 smMeasures.Add(ToBeAdded);
+            }
+        }
+
+        //Copy Hitsounds/Keysounds
+        public void copyHS(Beatmap source)
+        {
+            //Make sure time is ascending
+            source.oHitObjects.Sort((a, b) => a.Time.CompareTo(b.Time));
+            oHitObjects.Sort((a, b) => a.Time.CompareTo(b.Time));
+            Queue<osuHitObject> sHO = new Queue<osuHitObject>(source.oHitObjects);
+            Queue<osuHitObject> dHO = new Queue<osuHitObject>(oHitObjects);
+
+            List<osuHitObject> toSB = new List<osuHitObject>();
+            oHitObjects = copyHSrec(sHO, dHO, toSB);
+            oHitObjects.Reverse();
+
+            //Put these into SB
+            foreach (osuHitObject sbSound in toSB)
+            {
+                oEvents.Add(new osuEvent(osuEventType.Sample,
+                    sbSound.Time,
+                    sbSound.Addition.Volume,
+                    sbSound.Addition.KeySound));
+            }
+
+        }
+        private List<osuHitObject> copyHSrec(Queue<osuHitObject> sHO, Queue<osuHitObject> dHO, List<osuHitObject> toSB)
+        {
+            //OK so recursion is really slow? Eh, it's aight
+            //Returns the modified list of hit objects that the recursion has looped through, by pure virtue of time comparisons
+            //First, the base cases
+            if (sHO.Count == 0 || dHO.Count == 0)
+            {
+                // anything remaining in source means it goes into SB
+                while (sHO.Count > 0)
+                {
+                    toSB.Add(sHO.Dequeue());
+                }
+
+                //remainder in dHO goes into list unmodified, return the remainder, must be reversed
+                var hold = new List<osuHitObject>(dHO);
+                hold.Reverse();
+                return hold;
+            }
+            // next keysound hasn't been reached yet, need to remove note from dHO
+            else if (sHO.Peek().Time > dHO.Peek().Time)
+            {
+                //The add method throws list into reverse
+                osuHitObject rem = dHO.Dequeue();
+                List<osuHitObject> hold = copyHSrec(sHO, dHO, toSB);
+                hold.Add(rem);
+                return hold;
+            } 
+            // keysound has been passed, need to put into SB
+            else if (sHO.Peek().Time < dHO.Peek().Time)
+            {
+                toSB.Add(sHO.Dequeue());
+                return copyHSrec(sHO, dHO, toSB);
+            }
+            // times match, we want to assign ks by column (xpos) and destination by randomly for the time
+            else
+            {
+                int time = sHO.Peek().Time;
+                // Find all stuff in source at this time
+                List<osuHitObject> sourceKS = new List<osuHitObject>();
+                while (sHO.Count > 0 && sHO.Peek().Time == time)
+                {
+                    sourceKS.Add(sHO.Dequeue());
+                }
+                //Order keysounds by xpos, convert to queue
+                sourceKS.Sort((a, b) => a.Xpos.CompareTo(b.Xpos));
+                Queue<osuHitObject> tKS = new Queue<osuHitObject>(sourceKS);
+
+                // Find all stuff in dest at this time
+                List<osuHitObject> tDest = new List<osuHitObject>();
+                while (dHO.Count > 0 && dHO.Peek().Time == time)
+                {
+                    tDest.Add(dHO.Dequeue());
+                }
+
+                //random number generator
+                Random rng = new Random();
+
+                //container for done dest hs
+                List<osuHitObject> copiedHO = new List<osuHitObject>();
+
+                //go until source keysounds exhausted
+                while (tKS.Count > 0)
+                {
+                    //find the source KS and the random note to copy it to, remove from both collections
+                    osuHitObject ks = tKS.Dequeue();
+
+                    //if there is still a destination to copy to
+                    if (tDest.Count > 0)
+                    {
+                        int indHO = rng.Next(0, tDest.Count);
+                        osuHitObject to = tDest[indHO];
+                        tDest.RemoveAt(indHO);
+
+                        //do the copy
+                        to.ksCopy(ks);
+
+                        //finalize and collect the completed copied HO
+                        copiedHO.Add(to);
+                    }
+                    else
+                    {
+                        // no more destinations? current ks and rest of tKS goes into toSB
+                        toSB.Add(ks);
+                        toSB.AddRange(tKS);
+                        tKS.Clear();
+                    }
+                }
+                // Complete by emptying the dest HOs
+                copiedHO.AddRange(tDest);
+                
+                // Finish recursive loop
+                List<osuHitObject> hold = copyHSrec(sHO, dHO, toSB);
+                hold.AddRange(copiedHO);
+                return hold;
             }
         }
 
@@ -783,6 +921,13 @@ namespace OMtoSMConverter
         public static double MSPBtoBPM(double MSPB)
         {
             return (60000 / MSPB);
+        }
+        public void backup(string dest)
+        {
+            string old = oMetadata["Version"];
+            oMetadata["Version"] = old + " backup";
+            writeOut(dest);
+            oMetadata["Version"] = old;
         }
 
         //This is the place to do BPM smoothing if we do any. Assumes BeatsPerMeasure = 4
@@ -889,30 +1034,117 @@ namespace OMtoSMConverter
 
             return rawBPMs;
         }
+        public string entireOsuFile()
+        {
+            string file = "osu file format v14";
+            string nl = Environment.NewLine;
+            file = file +
+                nl + nl + "[General]"       + dictReduce(oGeneral)      +
+                nl + nl + "[Editor]"        + dictReduce(oEditor)       +
+                nl + nl + "[Metadata]"      + dictReduce(oMetadata)     +
+                nl + nl + "[Difficulty]"    + dictReduce(oDifficulty)   +
+                nl + nl + "[Events]"        + nl + string.Join(nl, oEvents.ConvertAll(a => a.ToString())) +
+                nl + nl + "[TimingPoints]"  + nl + string.Join(nl, oTimingPoints.ConvertAll(a => a.write()))   +
+                nl + nl + "[HitObjects]"    + nl + string.Join(nl, oHitObjects.ConvertAll(a => a.write()))
+                ;
 
+            return file;
+        }
+        public string dictReduce(Dictionary<string, string> dict)
+        {
+            return dictReduce(dict, ": ", Environment.NewLine);
+        }
+        public string dictReduce(Dictionary<string,string> dict, string pairDelim, string keyDelim)
+        {
+            string done = "";
+            foreach (string key in dict.Keys)
+            {
+                done = done + keyDelim + key + pairDelim + dict[key];
+            }
+            return done;
+        }
+        public void writeOut(string folder)
+        {
+            string filename = oMetadata["ArtistUnicode"] + " - " +
+                oMetadata["TitleUnicode"] + string.Format(" ({0}) [{1}].osu", oMetadata["Creator"], oMetadata["Version"]);
 
+            StreamWriter fileWrite = new StreamWriter(folder + "\\" + filename);
+            fileWrite.Write(entireOsuFile());
+            fileWrite.Close();
+        }
+
+    }
+    public enum osuEventType
+    {
+        _0,
+        Sprite,
+        Sample,
+        Comment
     }
     public class osuEvent
     {
-        public string[] eventSplit { get; set; }
+        public List<string> parameters { get; set; }
+        public osuEventType type { get; set; }
+        public string rawline { get; set; }
 
-        public osuEvent(string line)
+        public osuEvent(string rwline)
         {
-            if (!line.Contains(","))
+            parameters = new List<string>();
+            rawline = rwline;
+            if (!rwline.Contains(","))
             {
-                eventSplit = new string[1];
-                eventSplit[0] = line;
+                type = osuEventType.Comment;
+                parameters.Add(rwline);
             }
             else
             {
-                eventSplit = line.Split(',');
-                if (eventSplit[2].Contains("\""))
+                parameters.AddRange(rwline.Split(','));
+                switch (parameters[0])
                 {
-                    eventSplit[2] = eventSplit[2].Remove(eventSplit[2].Length - 1);
-                    eventSplit[2] = eventSplit[2].Remove(0,1);
+                    case "0":
+                        type = osuEventType._0;
+                        break;
+                    case "Sample":
+                        type = osuEventType.Sample;
+                        break;
+                    case "Sprite":
+                        type = osuEventType.Sprite;
+                        break;
+                    default:
+                        break;
                 }
             }
+        }
 
+        public osuEvent(osuEventType type, int time, int volume, string ksfile)
+        {
+            //Sample,24,0,"pispl_010.wav",60
+            parameters = new List<string>();
+            this.type = type;
+            switch (type)
+            {
+                case osuEventType._0:
+                    break;
+                case osuEventType.Sprite:
+                    break;
+                case osuEventType.Sample:
+                    parameters = new List<string>{
+                        "Sample",
+                        time.ToString(),
+                        "0",
+                        string.Format("\"{0}\"",ksfile)
+                        , volume.ToString()
+                    };
+                    break;
+                case osuEventType.Comment:
+                    break;
+                default:
+                    break;
+            }
+        }
+        public override string ToString()
+        {
+            return string.Join(",", parameters);
         }
     }
     public class osuTimingPoint
@@ -960,6 +1192,19 @@ namespace OMtoSMConverter
         {
             return (Inherited == 0);
         }
+        public string write()
+        {
+            return string.Join(",", new string[]{
+                Time.ToString(),
+                MSPerBeat.ToString(),
+                TimeSig.ToString(),
+                SType.ToString(),
+                SSet.ToString(),
+                Volume.ToString(),
+                Inherited.ToString(),
+                Kiai.ToString()
+            });
+        }
     }
     public class osuHitObject
     {
@@ -1001,27 +1246,62 @@ namespace OMtoSMConverter
             }
 
         }
+        public void ksCopy(osuHitObject ks)
+        {
+            //there is an actual wav? copy that
+            if (ks.Addition.KeySound != "")
+            {
+                Addition.KeySound = ks.Addition.KeySound;
+            }
+            else
+            {
+                HitSound = ks.HitSound;
+            }
+            Addition.Volume = ks.Addition.Volume;
+
+        }
+        public string write()
+        {
+            return string.Join(",", new string[]
+            {
+                Xpos.ToString(),
+                YPos.ToString(),
+                Time.ToString(),
+                Type.ToString(),
+                HitSound.ToString(),
+                Addition.write()
+            });
+        }
     }
     public class osuAddition
     {
         public string additionRaw { get; set; }
+        public int typeRaw { get; set; }
         public int LNEnd { get; set; }
+        public int Volume { get; set; }
         public string KeySound { get; set; }
 
+        public static int typeDecider(int typeRaw)
+        {
+            //Questionable, will need changing if parsing non-mania files
+            return (typeRaw < 16) ? 1 : typeRaw;
+        }
         public static osuAddition Parse(string additionRawString, int type)
         {
             osuAddition OA = new osuAddition();
+            OA.typeRaw = type;
             OA.additionRaw = additionRawString;
-            //Questionable, will need changing if parsing non-mania files
-            type = (type < 16) ? 1 : type;
+            type = typeDecider(type);
             string[] parser = additionRawString.Split(":".ToCharArray());
             switch (type)
             {
                 case 1:
+                    OA.Volume = int.Parse(parser[3]);
                     OA.KeySound = parser[4];
                     break;
                 case 128:
                     OA.LNEnd = int.Parse(parser[0]);
+                    OA.Volume = int.Parse(parser[4]);
                     OA.KeySound = parser[5];
                     break;
                 default:
@@ -1029,6 +1309,27 @@ namespace OMtoSMConverter
             }
 
             return OA;
+        }
+        public string write()
+        {
+            int typew = typeDecider(typeRaw);
+            switch (typew)
+            {
+                case 1:
+                    return string.Join(":", new string[]
+                    {
+                        "0","0","0", Volume.ToString(), KeySound
+                    });
+                case 128:
+                    return string.Join(":", new string[]
+                    {
+                        LNEnd.ToString(),
+                        "0","0","0", Volume.ToString(), KeySound
+                    });
+
+                default:
+                    return "";
+            }
         }
     }
     public class smMeasure
