@@ -40,6 +40,7 @@
             this.outBox.Name = "outBox";
             this.outBox.Size = new System.Drawing.Size(800, 576);
             this.outBox.TabIndex = 0;
+            this.outBox.SelectedIndexChanged += new System.EventHandler(this.outBox_SelectedIndexChanged);
             this.outBox.DragDrop += new System.Windows.Forms.DragEventHandler(this.fileBeg_dragDrop);
             this.outBox.DragEnter += new System.Windows.Forms.DragEventHandler(this.fileBeg_dragEnter);
             this.outBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.WinKeyPress);
@@ -54,6 +55,7 @@
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Name = "Form1";
             this.Text = "BilliumMoto\'s OM to SM Converter";
+            this.Load += new System.EventHandler(this.Form1_Load);
             this.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.WinKeyPress);
             this.ResumeLayout(false);
 

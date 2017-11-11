@@ -137,7 +137,7 @@ namespace OMtoSMConverter
             //Write to file
             boxInform("Exporting the Stepmania files, copying the mp3s might take a while...");
             file.SetHeaderData();
-            file.writeEverythingToFolder();
+            file.writeEverythingToFolder(this);
 
             //Thread fileCopyThread = new Thread(() => file.writeEverythingToFolder());
             //fileCopyThread.Start();
@@ -250,6 +250,16 @@ namespace OMtoSMConverter
         {
             //HashSet<char> invalid = new HashSet<char>(Path.GetInvalidFileNameChars());
             return string.Join("_", bad.Split(Path.GetInvalidFileNameChars()));
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        private void outBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
         }
     }
     public class smFile
@@ -433,7 +443,7 @@ namespace OMtoSMConverter
             }
             return file;
         }
-        public void writeEverythingToFolder()
+        public void writeEverythingToFolder(Form1 parent)
         {
             if (!hasSubstamce) return;
             //Use the name of the mp3 to separate same-folder different files
@@ -473,6 +483,7 @@ namespace OMtoSMConverter
             catch
             {
                 //Tell user somehow that files couldn't be copied over?
+                parent.boxInform("Files could not be copied over!");
                 return;
             }
         }
@@ -1079,7 +1090,8 @@ namespace OMtoSMConverter
         _0,
         Sprite,
         Sample,
-        Comment
+        Comment,
+        File
     }
     public class osuEvent
     {
@@ -1112,6 +1124,12 @@ namespace OMtoSMConverter
                         break;
                     default:
                         break;
+                }
+                if (parameters[2].Contains("\"") )
+                {
+                    type = osuEventType.File;
+                    parameters[2] = parameters[2].Replace("\"", "");
+
                 }
             }
         }
