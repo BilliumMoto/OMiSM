@@ -8,6 +8,6 @@ Sample information is taken from source from a left-to-right priority, meaning t
 
 See https://osu.ppy.sh/community/forums/topics/664319
 
-Usage exmaples:
+Usage examples:
 https://youtu.be/uf4-lr7V_Pw
 https://youtu.be/WLqrKwlZrUg
