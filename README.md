@@ -10,4 +10,4 @@ See https://osu.ppy.sh/community/forums/topics/664319
 
 Usage examples:
 https://youtu.be/uf4-lr7V_Pw
-https://youtu.be/WLqrKwlZrUg
+https://youtu.be/WLqrKwlZrUg&t=6m39s
