@@ -9,5 +9,7 @@ Sample information is taken from source from a left-to-right priority, meaning t
 See [Osu! forum post](https://osu.ppy.sh/community/forums/topics/664319).
 
 Usage examples:
+
 [Converting Osu! files to Stepmania files](https://youtu.be/uf4-lr7V_Pw)
+
 [Copying hitsounds between Osu! files](https://youtu.be/WLqrKwlZrUg&t=6m39s)
